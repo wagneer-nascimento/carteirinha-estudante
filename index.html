@@ -205,6 +205,7 @@ dd { margin: 0; text-transform: uppercase; }
     const photoInput = document.querySelector('#photoInput');
     const preview = document.querySelector('#photoPreview');
     const studentPhoto = document.querySelector('#studentPhoto');
+    const storageKey = 'carteirinha-estudante-v1';
     let selectedPhoto = '';
 
     const formatCpf = value => value.replace(/\D/g, '').slice(0, 11)
@@ -218,6 +219,45 @@ dd { margin: 0; text-transform: uppercase; }
       return `${day}/${month}/${year}`;
     };
 
+    const compressPhoto = dataUrl => new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => {
+        const maxWidth = 720;
+        const maxHeight = 960;
+        const scale = Math.min(1, maxWidth / image.width, maxHeight / image.height);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(image.width * scale);
+        canvas.height = Math.round(image.height * scale);
+        canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      image.onerror = reject;
+      image.src = dataUrl;
+    });
+
+    const applyStudentData = data => {
+      if (data.name) document.querySelector('#cardStudentName').textContent = data.name;
+      if (data.cpf) document.querySelector('#cardCpf').textContent = data.cpf;
+      if (data.birthDate) document.querySelector('#cardBirthDate').textContent = formatDate(data.birthDate);
+      if (data.photo) {
+        selectedPhoto = data.photo;
+        studentPhoto.src = data.photo;
+        studentPhoto.style.display = 'block';
+      }
+      studentNameInput.value = data.name || '';
+      cpfInput.value = data.cpf || '';
+      birthDateInput.value = data.birthDate || '';
+    };
+
+    const loadStudentData = () => {
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) applyStudentData(JSON.parse(saved));
+      } catch (error) {
+        console.warn('Não foi possível recuperar os dados salvos.', error);
+      }
+    };
+
     cpfInput.addEventListener('input', () => cpfInput.value = formatCpf(cpfInput.value));
 
     photoInput.addEventListener('change', () => {
@@ -229,15 +269,25 @@ dd { margin: 0; text-transform: uppercase; }
         return;
       }
       const reader = new FileReader();
-      reader.onload = event => {
-        selectedPhoto = event.target.result;
-        preview.src = selectedPhoto;
-        preview.style.display = 'block';
+      reader.onload = async event => {
+        try {
+          selectedPhoto = await compressPhoto(event.target.result);
+          preview.src = selectedPhoto;
+          preview.style.display = 'block';
+        } catch (error) {
+          alert('Não foi possível processar esta imagem.');
+        }
       };
       reader.readAsDataURL(file);
     });
 
-    document.querySelector('#openForm').addEventListener('click', () => dialog.showModal());
+    document.querySelector('#openForm').addEventListener('click', () => {
+      if (selectedPhoto) {
+        preview.src = selectedPhoto;
+        preview.style.display = 'block';
+      }
+      dialog.showModal();
+    });
     document.querySelector('#cancelForm').addEventListener('click', () => dialog.close());
 
     form.addEventListener('submit', event => {
@@ -249,12 +299,24 @@ dd { margin: 0; text-transform: uppercase; }
         studentPhoto.src = selectedPhoto;
         studentPhoto.style.display = 'block';
       }
+      try {
+        localStorage.setItem(storageKey, JSON.stringify({
+          name: studentNameInput.value.trim(),
+          cpf: cpfInput.value,
+          birthDate: birthDateInput.value,
+          photo: selectedPhoto
+        }));
+      } catch (error) {
+        alert('Os dados foram aplicados, mas o navegador não conseguiu salvá-los. Tente usar uma foto menor.');
+      }
       dialog.close();
     });
 
     dialog.addEventListener('click', event => {
       if (event.target === dialog) dialog.close();
     });
+
+    loadStudentData();
   </script>
 </body>
 </html>
